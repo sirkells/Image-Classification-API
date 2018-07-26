@@ -12,14 +12,51 @@ client = MongoClient("mongodb://db:27017")
 db = client.ImageClassification
 users = db["Users"]
 
+
 #check if user exist
 def UserExist(username):
+    #return false if user doesnt exist
     if users.find({"Username":username}).count() == 0:
         return False
+    #return true if it does
     else:
         return True
 
+#func for json status code and msg
+def getStatusMsg(status, message):
+    retJson = {
+        "status": status,
+        "message": message
+    }
+    return retJson
 
+#function to verify pwd match with user
+def verifyPw(username, password):
+    #gets the pwd of the corresponding username and save it as hashed_pw
+    hashed_pw = users.find({
+        "Username": username
+    })[0]["Password"]
+    #hashes the given pwd by the user and compares it with the saved hashed pwd. ret true if equal
+    if bcrypt.hashpw(password.encode('utf8'), hashed_pw) == hashed_pw:
+        return True
+    else:
+        return False
+
+
+
+
+def verifyLoginDetails(username, password):
+    if not UserExist(username):
+        return genStatusMsgDict(301, "Username doesnt exist"), True
+    correct_pw = verifyPw(username, password)
+    if not correct_pw:
+        return genStatusMsg(302, "Incorrect password" ), True
+
+    return None, False
+
+
+
+#Resources
 class Register(Resource):
     def post(self):
         #get data from user
@@ -28,11 +65,7 @@ class Register(Resource):
         password = postedData["password"]
         #check if user exist
         if UserExist(username):
-            retJson = {
-                "status": 301,
-                "error": "username already taken"
-            }
-            return jsonify(retJson)
+            return jsonify(getStatusMsg(301, "username already taken"))
             #if user doesnt exist, hash password
         hashedpw = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt())
         #insert user in db
@@ -41,8 +74,64 @@ class Register(Resource):
             "Password": hashedpw,
             "Tokens": 6
         })
-        retJson = {
-            "status": 200,
-            "message": "account succesfully created"
-        }
-        return jsonify(retJson)
+        return jsonify(getStatusMsg(200, "account succesfully created"))
+
+class Classify(Resource):
+    def post(self):
+        #get data from user
+        postedData = request.get_json()
+        username = postedData["username"]
+        password = postedData["password"]
+        #url = image url
+        url = postedData["url"]
+        #verify logindetails
+        retJson, error = verifyLoginDetails(username, password)
+        #if true, returns corresponding error message
+        if error:
+            return jsonify(retJson)
+        #get the num of tokens for user
+        tokens = users.find({ "Username": username})[0]["Tokens"]
+        #check if user has enough tokens
+        if tokens<=0:
+            return jsonify(getStatusMsg(303, "Insufficient Tokens!"))
+        #if theres enough token get the image from the url given by the user and save it as r
+        r = requests.get(url)
+        retJson = {}
+        #creates and open an empty file temp.jpg and rep it as f (f = temp.jpg)
+        with open("temp.jpg", "wb") as f:
+            #copy the content of the image gotten from the url into f
+            f.write(r.content)
+            #create a subprocess with a Popen method that impoprts the python file 'classify.py',
+            #takes the arguments variable(model_dir and image_file) needed to run the process
+            process = subprocess.Popen("python classify.py --model_dir=. --image_file=./temp.jpg")
+            # send the communication subprocess request to the image classifier api
+            process.communicate()[0]
+            #wait for the process to runs and saves the result of analysing the image in a text.txt(dict) file
+            process.wait()
+            #get and assign the text.txt file to g
+            with open("text.txt") as g:
+                #copy and saves the content of g into retJson
+                retJson = json.load(g)
+
+        #subtract one token from users
+        users.update({
+            "Username": username
+        }, {
+            "$set": {
+                "Tokens": tokens - 1
+            }
+        })
+        return retJson
+
+
+api.add_resource(Register, '/register')
+#api.add_resource(Detect, '/detect')
+#api.add_resource(Refill, '/refill')
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0")
+
+#class Classify(Resource):
+    #def post(self):
+    #    user
