@@ -154,7 +154,7 @@ class Refill(Resource):
             return jsonify(retJson)
 
         correct_pw = "abc123"
-        if not password == correct_pw:
+        if not admin_pwd == correct_pw:
             return jsonify(getStatusMsg(304, "Invalid Admin Password" ))
         users.update({
                 "Username": username },
