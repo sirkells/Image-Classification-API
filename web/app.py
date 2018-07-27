@@ -3,7 +3,11 @@ from flask_restful import Api, Resource
 from pymongo import MongoClient
 import bcrypt
 import requests
+import subprocess #from classify.py
 import json
+import numpy as np
+#from tensorflow.python import *
+import tensorflow as tf
 
 app = Flask(__name__)
 api = Api(app)
@@ -94,6 +98,16 @@ class Classify(Resource):
         #check if user has enough tokens
         if tokens<=0:
             return jsonify(getStatusMsg(303, "Insufficient Tokens!"))
+
+        """r = requests.get(url)
+        retJson = {}
+        with open('temp.jpg', 'wb') as f:
+            f.write(r.content)
+            proc = subprocess.Popen('python classify_image.py --model_dir=. --image_file=./temp.jpg', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+            ret = proc.communicate()[0]
+            proc.wait()
+            with open("text.txt") as f:
+                retJson = json.load(f)"""
         #if theres enough token get the image from the url given by the user and save it as r
         r = requests.get(url)
         retJson = {}
@@ -101,13 +115,14 @@ class Classify(Resource):
         with open("temp.jpg", "wb") as f:
             #copy the content of the image gotten from the url into f
             f.write(r.content)
-            #create a subprocess with a Popen method that impoprts the python file 'classify.py',
+            #create a subprocess with a Popen method that imports the python file 'classify.py',
             #takes the arguments variable(model_dir and image_file) needed to run the process
-            process = subprocess.Popen("python classify.py --model_dir=. --image_file=./temp.jpg")
+
+            proc = subprocess.Popen("python classify_image.py --model_dir=. --image_file=./temp.jpg", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True )
             # send the communication subprocess request to the image classifier api
-            process.communicate()[0]
+            proc.communicate()[0]
             #wait for the process to runs and saves the result of analysing the image in a text.txt(dict) file
-            process.wait()
+            proc.wait()
             #get and assign the text.txt file to g
             with open("text.txt") as g:
                 #copy and saves the content of g into retJson
@@ -123,10 +138,39 @@ class Classify(Resource):
         })
         return retJson
 
+class Refill(Resource):
+    def post(self):
+        postedData = request.get_json()
+        username = postedData["username"]
+        admin_pwd = postedData["password"]
+        refill_amount = postedData["refill"]
+
+
+        if not UserExist(username):
+            retJson = {
+                "status": 301,
+                "msg": "Username does not exist"
+            }
+            return jsonify(retJson)
+
+        correct_pw = "abc123"
+        if not password == correct_pw:
+            return jsonify(getStatusMsg(304, "Invalid Admin Password" ))
+        users.update({
+                "Username": username },
+            {
+                    "$set":{
+                        "Token": refill_amount
+                }
+            })
+
+        return jsonify(getStatusMsg(200, "Refilled Succesfully"))
+
+
 
 api.add_resource(Register, '/register')
-#api.add_resource(Detect, '/detect')
-#api.add_resource(Refill, '/refill')
+api.add_resource(Classify, '/classify')
+api.add_resource(Refill, '/refill')
 
 
 if __name__ == '__main__':
