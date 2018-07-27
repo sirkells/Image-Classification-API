@@ -1,2 +1,2 @@
 # Image-Classification-API
-An API that uses tensorflow to identify images
+An API that uses tensorflow to recognise images
